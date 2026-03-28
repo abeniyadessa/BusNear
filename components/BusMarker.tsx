@@ -1,15 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated, Easing } from 'react-native';
-import Svg, {
-  Rect,
-  Path,
-  Ellipse,
-  Defs,
-  LinearGradient,
-  RadialGradient,
-  Stop,
-  ClipPath,
-} from 'react-native-svg';
+import Svg, { Rect, Path, Defs, LinearGradient, RadialGradient, Stop, ClipPath, Ellipse } from 'react-native-svg';
 import { BusStatus } from '@/types';
 
 interface BusMarkerProps {
@@ -17,133 +8,68 @@ interface BusMarkerProps {
   status: BusStatus;
 }
 
-// Canvas & bus dimensions
-const C  = 52;          // canvas size
-const BW = 22;          // bus width
-const BH = 40;          // bus height
-const BX = (C - BW) / 2;
-const BY = (C - BH) / 2;
-const R  = 4;           // corner radius
-
+// ─── SVG bus (pure top-down, no fake depth in SVG — perspective transform handles 3D) ───
 function BusSVG({ status }: { status: BusStatus }) {
-  const isDelayed  = status === 'delayed';
-
-  const roofTop    = isDelayed ? '#FF9966' : '#FFE066';
-  const roofMid    = isDelayed ? '#FF6B35' : '#FFC400';
-  const roofEdge   = isDelayed ? '#CC4A1A' : '#D4991A';
-  const shadowOff  = 3; // shadow offset px → gives "floating above ground" feel
+  const delayed = status === 'delayed';
+  const C1 = delayed ? '#FF9966' : '#FFE066';   // roof highlight
+  const C2 = delayed ? '#FF6B35' : '#FFC400';   // roof mid
+  const C3 = delayed ? '#CC4A1A' : '#C47E00';   // roof shadow edge
 
   return (
-    <Svg width={C} height={C} viewBox={`0 0 ${C} ${C}`}>
+    <Svg width={36} height={56} viewBox="0 0 36 56">
       <Defs>
-        {/* Roof surface — radial gradient, bright center like sunlight hitting the top */}
-        <RadialGradient id="roof" cx="45%" cy="30%" rx="60%" ry="55%">
-          <Stop offset="0%"   stopColor={roofTop}  stopOpacity="1" />
-          <Stop offset="55%"  stopColor={roofMid}  stopOpacity="1" />
-          <Stop offset="100%" stopColor={roofEdge} stopOpacity="1" />
+        {/* Roof — radial, sunlight from top-left */}
+        <RadialGradient id="roof" cx="40%" cy="25%" rx="65%" ry="55%">
+          <Stop offset="0%"   stopColor={C1} stopOpacity="1" />
+          <Stop offset="50%"  stopColor={C2} stopOpacity="1" />
+          <Stop offset="100%" stopColor={C3} stopOpacity="1" />
         </RadialGradient>
 
-        {/* Window glass */}
-        <LinearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0%"   stopColor="#2A5F9E" stopOpacity="0.9" />
+        {/* Glass */}
+        <LinearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0%"   stopColor="#3A6EA8" stopOpacity="0.9" />
           <Stop offset="100%" stopColor="#0D2B50" stopOpacity="1"   />
         </LinearGradient>
 
-        {/* Bus clip */}
-        <ClipPath id="clip">
-          <Rect x={BX} y={BY} width={BW} height={BH} rx={R} />
+        {/* Clip to bus shape */}
+        <ClipPath id="body">
+          <Rect x="2" y="2" width="32" height="52" rx="6" />
         </ClipPath>
       </Defs>
 
-      {/* ── Drop shadow (offset → looks 3D / floating) ── */}
-      <Rect
-        x={BX + shadowOff}
-        y={BY + shadowOff}
-        width={BW}
-        height={BH}
-        rx={R + 1}
-        fill="rgba(0,0,0,0.22)"
-      />
+      {/* ── Body ── */}
+      <Rect x="2" y="2" width="32" height="52" rx="6" fill="url(#roof)" />
 
-      {/* ── Bus body ── */}
-      <Rect
-        x={BX} y={BY}
-        width={BW} height={BH}
-        rx={R}
-        fill="url(#roof)"
-      />
+      {/* ── Windshield (front) ── */}
+      <Rect x="4" y="3" width="28" height="10" rx="3" fill="url(#glass)" clipPath="url(#body)" />
+      {/* glare */}
+      <Rect x="5" y="4" width="8" height="2.5" rx="1" fill="white" opacity="0.22" clipPath="url(#body)" />
 
-      {/* ── Windshield (front, top) ── */}
-      <Rect
-        x={BX + 2} y={BY + 1}
-        width={BW - 4} height={8}
-        rx={2}
-        fill="url(#glass)"
-        clipPath="url(#clip)"
-      />
-      {/* windshield glare */}
-      <Rect
-        x={BX + 3} y={BY + 2}
-        width={6} height={2}
-        rx={1}
-        fill="white"
-        opacity={0.25}
-        clipPath="url(#clip)"
-      />
-
-      {/* ── Roof panel lines (suggests roof structure from above) ── */}
-      <Rect x={BX + 4} y={BY + 11} width={BW - 8} height={0.8} rx={0.4} fill="rgba(0,0,0,0.12)" clipPath="url(#clip)" />
-      <Rect x={BX + 4} y={BY + 18} width={BW - 8} height={0.8} rx={0.4} fill="rgba(0,0,0,0.12)" clipPath="url(#clip)" />
-      <Rect x={BX + 4} y={BY + 25} width={BW - 8} height={0.8} rx={0.4} fill="rgba(0,0,0,0.12)" clipPath="url(#clip)" />
+      {/* ── Roof center line (single subtle ridge) ── */}
+      <Rect x="17" y="14" width="2" height="28" rx="1" fill="rgba(0,0,0,0.08)" clipPath="url(#body)" />
 
       {/* ── Rear window ── */}
-      <Rect
-        x={BX + 2} y={BY + BH - 9}
-        width={BW - 4} height={7}
-        rx={2}
-        fill="url(#glass)"
-        clipPath="url(#clip)"
-      />
-      {/* rear glare */}
-      <Rect
-        x={BX + 3} y={BY + BH - 8}
-        width={5} height={1.5}
-        rx={0.5}
-        fill="white"
-        opacity={0.18}
-        clipPath="url(#clip)"
-      />
+      <Rect x="4" y="43" width="28" height="9" rx="3" fill="url(#glass)" clipPath="url(#body)" />
+      {/* glare */}
+      <Rect x="5" y="44" width="7" height="2" rx="1" fill="white" opacity="0.15" clipPath="url(#body)" />
 
-      {/* ── Left edge shadow (right side of bus gets less light) ── */}
-      <Rect
-        x={BX + BW - 3} y={BY}
-        width={3} height={BH}
-        rx={0}
-        fill="rgba(0,0,0,0.10)"
-        clipPath="url(#clip)"
-      />
-      <Rect
-        x={BX} y={BY + BH - 3}
-        width={BW} height={3}
-        rx={0}
-        fill="rgba(0,0,0,0.08)"
-        clipPath="url(#clip)"
-      />
+      {/* ── Right-edge shadow (subtle depth on sides) ── */}
+      <Rect x="30" y="2" width="4" height="52" rx="0" fill="rgba(0,0,0,0.09)" clipPath="url(#body)" />
+      <Rect x="2"  y="2" width="4" height="52" rx="0" fill="rgba(255,255,255,0.06)" clipPath="url(#body)" />
+
+      {/* ── Bottom edge shadow ── */}
+      <Rect x="2" y="48" width="32" height="6" rx="0" fill="rgba(0,0,0,0.07)" clipPath="url(#body)" />
 
       {/* ── Headlights ── */}
-      <Rect x={BX + 1} y={BY + 2}   width={3.5} height={2} rx={1} fill="#FFFBE6" opacity={0.95} />
-      <Rect x={BX + BW - 4.5} y={BY + 2} width={3.5} height={2} rx={1} fill="#FFFBE6" opacity={0.95} />
+      <Rect x="3"  y="3" width="5" height="3" rx="1.5" fill="#FFFBE6" opacity="0.95" />
+      <Rect x="28" y="3" width="5" height="3" rx="1.5" fill="#FFFBE6" opacity="0.95" />
 
       {/* ── Tail lights ── */}
-      <Rect x={BX + 1} y={BY + BH - 4}   width={3.5} height={2.5} rx={1} fill="#FF3B30" opacity={0.9} />
-      <Rect x={BX + BW - 4.5} y={BY + BH - 4} width={3.5} height={2.5} rx={1} fill="#FF3B30" opacity={0.9} />
+      <Rect x="3"  y="51" width="5" height="3" rx="1.5" fill="#FF3B30" opacity="0.9" />
+      <Rect x="28" y="51" width="5" height="3" rx="1.5" fill="#FF3B30" opacity="0.9" />
 
-      {/* ── Direction arrow — clean teardrop above front ── */}
-      <Path
-        d={`M${C / 2} ${BY - 7} L${C / 2 - 4} ${BY - 1} L${C / 2 + 4} ${BY - 1} Z`}
-        fill="#0B3C5D"
-        opacity={0.75}
-      />
+      {/* ── Direction arrow ── */}
+      <Path d="M18 -4 L13 2 L23 2 Z" fill="#0B3C5D" opacity="0.7" />
     </Svg>
   );
 }
@@ -154,11 +80,11 @@ export default function BusMarker({ heading, status }: BusMarkerProps) {
   const breathe      = useRef(new Animated.Value(1)).current;
   const isArriving   = status === 'arriving' || status === 'arrived';
 
-  // Subtle idle breathe (like Uber)
+  // Idle breathe
   useEffect(() => {
     const anim = Animated.loop(
       Animated.sequence([
-        Animated.timing(breathe, { toValue: 1.05, duration: 1800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(breathe, { toValue: 1.06, duration: 1800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
         Animated.timing(breathe, { toValue: 1,    duration: 1800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       ])
     );
@@ -166,33 +92,73 @@ export default function BusMarker({ heading, status }: BusMarkerProps) {
     return () => anim.stop();
   }, []);
 
-  // Arrival pulse ring
+  // Arrival pulse
   useEffect(() => {
     if (isArriving) {
       const anim = Animated.loop(
         Animated.sequence([
           Animated.parallel([
-            Animated.timing(pulseScale,   { toValue: 2.4, duration: 900, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+            Animated.timing(pulseScale,   { toValue: 2.6, duration: 900, easing: Easing.out(Easing.quad), useNativeDriver: true }),
             Animated.timing(pulseOpacity, { toValue: 0,   duration: 900, useNativeDriver: true }),
           ]),
           Animated.parallel([
             Animated.timing(pulseScale,   { toValue: 1,    duration: 0, useNativeDriver: true }),
-            Animated.timing(pulseOpacity, { toValue: 0.55, duration: 0, useNativeDriver: true }),
+            Animated.timing(pulseOpacity, { toValue: 0.5,  duration: 0, useNativeDriver: true }),
           ]),
         ])
       );
       anim.start();
       return () => anim.stop();
-    } else {
-      pulseScale.setValue(1);
-      pulseOpacity.setValue(0);
     }
+    pulseScale.setValue(1);
+    pulseOpacity.setValue(0);
   }, [isArriving]);
 
+  // The magic: perspective + rotateX gives the 3D "see the side as it turns" effect.
+  // rotateX tilts the bus so the front face is visible. As rotateZ (heading) changes,
+  // whichever face is now at the "front" of the tilt naturally becomes visible —
+  // exactly like a real 3D object rotating on a flat surface.
+  const rad = (heading * Math.PI) / 180;
+
+  // Slightly elongate shadow in direction of travel for a grounded feel
+  const shadowScaleX = 0.55 + Math.abs(Math.sin(rad)) * 0.15;
+  const shadowScaleY = 0.30 + Math.abs(Math.cos(rad)) * 0.08;
+
   return (
-    <View style={[styles.wrap, { transform: [{ rotate: `${heading}deg` }] }]}>
-      <Animated.View style={[styles.pulse, { transform: [{ scale: pulseScale }], opacity: pulseOpacity }]} />
-      <Animated.View style={{ transform: [{ scale: breathe }] }}>
+    <View style={styles.outer}>
+      {/* ── Soft ground shadow (flat, no perspective) ── */}
+      <Animated.View
+        style={[
+          styles.shadow,
+          {
+            transform: [
+              { rotate: `${heading}deg` },
+              { scaleX: shadowScaleX },
+              { scaleY: shadowScaleY },
+            ],
+          },
+        ]}
+      />
+
+      {/* ── Arrival pulse ── */}
+      <Animated.View
+        style={[
+          styles.pulse,
+          { transform: [{ scale: pulseScale }], opacity: pulseOpacity },
+        ]}
+      />
+
+      {/* ── Bus — perspective gives the 3D rotation feel ── */}
+      <Animated.View
+        style={{
+          transform: [
+            { perspective: 260 },
+            { rotateX: '22deg' },          // tilt forward — reveals face as bus turns
+            { rotateZ: `${heading}deg` },  // heading on map
+            { scale: breathe },
+          ],
+        }}
+      >
         <BusSVG status={status} />
       </Animated.View>
     </View>
@@ -200,17 +166,26 @@ export default function BusMarker({ heading, status }: BusMarkerProps) {
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    width: C + 16,
-    height: C + 16,
+  outer: {
+    width: 72,
+    height: 72,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pulse: {
+  shadow: {
     position: 'absolute',
     width: 48,
     height: 48,
     borderRadius: 24,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    // Blur-like effect via layering handled by opacity
+    bottom: 4,
+  },
+  pulse: {
+    position: 'absolute',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: '#22C55E',
   },
 });
