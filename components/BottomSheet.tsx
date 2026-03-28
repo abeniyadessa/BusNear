@@ -10,20 +10,22 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Navigation, Settings, Layers, LogIn, LogOut, Bell, ChevronUp, MapPin } from 'lucide-react-native';
+import { Navigation, Settings, Layers, LogIn, LogOut, Bell } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import Colors from '@/constants/colors';
 import { useBusTracking } from '@/context/BusTrackingContext';
 import { useAuth } from '@/context/AuthContext';
 import { useNotifications } from '@/context/NotificationContext';
 import { useTheme } from '@/context/ThemeContext';
+import StatusChip from '@/components/StatusChip';
 import PresenceIndicator from '@/components/PresenceIndicator';
 import ChildSelector from '@/components/ChildSelector';
 import RouteTimeline from '@/components/RouteTimeline';
 import EventsFeed from '@/components/EventsFeed';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const COLLAPSED  = 200;
-const HALF       = 460;
+const COLLAPSED_HEIGHT = 180;
+const HALF_HEIGHT = 440;
 
 interface BottomSheetProps {
   onSettingsPress: () => void;
@@ -31,88 +33,117 @@ interface BottomSheetProps {
   onActivityPress: () => void;
 }
 
-function pad(n: number) { return n.toString().padStart(2, '0'); }
-function fmtTime(ts: number) {
+function formatEventTime(ts: number): string {
   const d = new Date(ts);
-  const h = d.getHours(), m = d.getMinutes();
-  return `${h % 12 || 12}:${pad(m)} ${h >= 12 ? 'PM' : 'AM'}`;
+  const h = d.getHours();
+  const m = d.getMinutes();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const hour = h % 12 || 12;
+  return `${hour}:${m.toString().padStart(2, '0')} ${ampm}`;
 }
 
 export default function BottomSheet({ onSettingsPress, onMapSettingsPress, onActivityPress }: BottomSheetProps) {
   const insets = useSafeAreaInsets();
-  const { busState, route, isFollowing, toggleFollow, presenceState, startSimulation, stopSimulation } = useBusTracking();
-  const { activeChild, authState, setActiveChild, ridershipEvents, serviceAlerts, lastEvent } = useAuth();
+  const { busState, route, isFollowing, toggleFollow, presenceState, startSimulation, stopSimulation } =
+    useBusTracking();
+  const { activeChild, authState, setActiveChild, ridershipEvents, serviceAlerts, lastEvent, boardingState } = useAuth();
   const { unreadCount } = useNotifications();
   const { colors, isDark } = useTheme();
 
-  const expandedSnap = 100;
-  const snapPoints = useMemo(() => [
-    SCREEN_HEIGHT - COLLAPSED - insets.bottom,
-    SCREEN_HEIGHT - HALF - insets.bottom,
-    expandedSnap,
-  ], [insets.bottom]);
+  const expandedHeight = SCREEN_HEIGHT - 120;
+  const snapPoints = useMemo(
+    () => [
+      SCREEN_HEIGHT - COLLAPSED_HEIGHT - insets.bottom,
+      SCREEN_HEIGHT - HALF_HEIGHT - insets.bottom,
+      120,
+    ],
+    [insets.bottom]
+  );
 
   const translateY = useRef(new Animated.Value(snapPoints[0])).current;
-  const lastSnap   = useRef(snapPoints[0]);
+  const lastSnap = useRef(snapPoints[0]);
+  const dragStartY = useRef(0);
 
-  const snapTo = useCallback((toValue: number) => {
-    lastSnap.current = toValue;
-    Animated.spring(translateY, { toValue, damping: 30, stiffness: 280, mass: 0.9, useNativeDriver: true }).start();
-  }, [translateY]);
+  const snapTo = useCallback(
+    (toValue: number) => {
+      lastSnap.current = toValue;
+      Animated.spring(translateY, {
+        toValue,
+        damping: 28,
+        stiffness: 300,
+        mass: 0.8,
+        useNativeDriver: true,
+      }).start();
+    },
+    [translateY]
+  );
 
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 4,
-    onPanResponderGrant: () => { translateY.stopAnimation(); },
-    onPanResponderMove: (_, g) => {
-      const next = lastSnap.current + g.dy;
-      translateY.setValue(Math.max(snapPoints[2], Math.min(snapPoints[0], next)));
-    },
-    onPanResponderRelease: (_, g) => {
-      const current  = lastSnap.current + g.dy;
-      const velocity = g.vy;
-      let target = snapPoints.reduce((a, b) => Math.abs(b - current) < Math.abs(a - current) ? b : a);
-      if (Math.abs(velocity) > 0.5) {
-        target = velocity > 0
-          ? snapPoints.filter(s => s > current)[0] ?? snapPoints[snapPoints.length - 1]
-          : snapPoints.filter(s => s < current).slice(-1)[0] ?? snapPoints[0];
-      }
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      snapTo(target);
-    },
-  }), [snapPoints, snapTo, translateY]);
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 5,
+        onPanResponderGrant: () => {
+          dragStartY.current = lastSnap.current;
+          translateY.stopAnimation();
+        },
+        onPanResponderMove: (_, g) => {
+          const newY = dragStartY.current + g.dy;
+          const clampedY = Math.max(snapPoints[2], Math.min(snapPoints[0], newY));
+          translateY.setValue(clampedY);
+        },
+        onPanResponderRelease: (_, g) => {
+          const currentY = dragStartY.current + g.dy;
+          const velocity = g.vy;
+
+          let closest = snapPoints[0];
+          let minDist = Infinity;
+
+          for (const sp of snapPoints) {
+            const dist = Math.abs(currentY - sp);
+            if (dist < minDist) {
+              minDist = dist;
+              closest = sp;
+            }
+          }
+
+          if (Math.abs(velocity) > 0.5) {
+            if (velocity > 0) {
+              const lower = snapPoints.filter((sp) => sp > currentY);
+              closest = lower.length > 0 ? lower[0] : snapPoints[snapPoints.length - 1];
+            } else {
+              const upper = snapPoints.filter((sp) => sp < currentY);
+              closest =
+                upper.length > 0 ? upper[upper.length - 1] : snapPoints[0];
+            }
+          }
+
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          snapTo(closest);
+        },
+      }),
+    [snapPoints, snapTo, translateY]
+  );
 
   const nextStop = route.stops[busState.nextStopIndex];
   const isActive = busState.isSimulating;
 
-  const statusColor = busState.status === 'arriving' ? '#16A34A'
-                    : busState.status === 'arrived'   ? '#16A34A'
-                    : busState.status === 'delayed'    ? '#DC2626'
-                    : colors.busYellow;
-
-  const etaGlow = busState.status === 'arriving' ? '#16A34A'
-                : busState.status === 'delayed'   ? '#DC2626'
-                : colors.busYellow;
-
   return (
     <Animated.View
       style={[
-        styles.sheet,
+        styles.container,
         {
-          transform: [{ translateY }],
-          backgroundColor: isDark ? '#1A2236' : '#FFFFFF',
           paddingBottom: insets.bottom + 8,
-          shadowColor: isDark ? '#000' : '#0A1628',
+          transform: [{ translateY }],
+          backgroundColor: colors.surface,
         },
       ]}
       {...panResponder.panHandlers}
     >
-      {/* Handle */}
       <View style={styles.handleArea}>
-        <View style={[styles.handle, { backgroundColor: isDark ? '#334155' : '#E2E8F0' }]} />
+        <View style={[styles.handle, { backgroundColor: colors.border }]} />
       </View>
 
-      {/* Child selector */}
       {authState.linkedChildren.length > 1 && (
         <ChildSelector
           children={authState.linkedChildren}
@@ -121,185 +152,165 @@ export default function BottomSheet({ onSettingsPress, onMapSettingsPress, onAct
         />
       )}
 
-      {/* Header: bus ID + route + presence */}
-      <View style={styles.header}>
+      <View style={styles.headerRow}>
         <View style={styles.headerLeft}>
-          <View style={[styles.busIdBadge, { backgroundColor: isDark ? 'rgba(255,196,0,0.15)' : 'rgba(255,196,0,0.12)' }]}>
-            <Text style={[styles.busIdText, { color: colors.busYellowDark }]}>{busState.busId}</Text>
-          </View>
-          <View style={styles.routeInfo}>
-            <Text style={[styles.routeTo, { color: colors.textSecondary }]} numberOfLines={1}>
-              → {route.stops[route.stops.length - 1].name}
-            </Text>
-            {isActive && (
-              <View style={styles.presenceWrap}>
-                <PresenceIndicator state={presenceState} lastUpdated={busState.lastUpdated} />
-              </View>
-            )}
-          </View>
+          <Text style={[styles.busId, { color: colors.textPrimary }]}>{busState.busId}</Text>
+          <Text style={[styles.routeArrow, { color: colors.textTertiary }]}> → </Text>
+          <Text style={[styles.destination, { color: colors.textSecondary }]} numberOfLines={1}>
+            {route.stops[route.stops.length - 1].name}
+          </Text>
         </View>
-        <TouchableOpacity
-          style={[styles.settingsBtn, { backgroundColor: isDark ? '#0F172A' : '#F1F5F9' }]}
-          onPress={onSettingsPress}
-          activeOpacity={0.7}
-        >
-          <Settings size={17} color={colors.textSecondary} strokeWidth={2} />
-        </TouchableOpacity>
+        <View style={styles.statusRow}>
+          {isActive && (
+            <PresenceIndicator state={presenceState} lastUpdated={busState.lastUpdated} />
+          )}
+          <StatusChip status={busState.status} />
+        </View>
       </View>
 
-      {/* ETA hero */}
       {isActive ? (
-        <View style={styles.etaHero}>
-          <View style={styles.etaMain}>
-            <Text style={[styles.etaNumber, { color: statusColor }]}>{busState.eta}</Text>
-            <View style={styles.etaRight}>
-              <Text style={[styles.etaMinLabel, { color: colors.textSecondary }]}>min{'\n'}away</Text>
-            </View>
-          </View>
-          <View style={[styles.etaDivider, { backgroundColor: isDark ? '#1E293B' : '#F1F5F9' }]} />
-          <View style={styles.nextStopRow}>
-            <MapPin size={13} color={colors.textTertiary} strokeWidth={2} />
-            <Text style={[styles.nextStopLabel, { color: colors.textTertiary }]}>Next stop</Text>
-            <Text style={[styles.nextStopName, { color: colors.textPrimary }]} numberOfLines={1}>
-              {nextStop?.name ?? '—'}
-            </Text>
-          </View>
+        <View style={styles.etaRow}>
+          <Text style={[styles.etaNumber, { color: colors.textPrimary }]}>{busState.eta}</Text>
+          <Text style={[styles.etaUnit, { color: colors.textSecondary }]}> min away</Text>
+          <View style={[styles.etaDivider, { backgroundColor: colors.border }]} />
+          <Text style={[styles.nextStopText, { color: colors.textSecondary }]}>
+            Next: {nextStop?.name ?? '—'}
+          </Text>
         </View>
       ) : (
-        <View style={styles.etaHero}>
-          <Text style={[styles.noTrackingText, { color: colors.textTertiary }]}>
-            {busState.status === 'arrived' ? 'Bus has arrived' : 'Not currently tracking'}
+        <View style={styles.etaRow}>
+          <Text style={[styles.etaPlaceholder, { color: colors.textTertiary }]}>
+            {busState.status === 'arrived' ? 'Bus has arrived!' : 'Tap Start to begin tracking'}
           </Text>
         </View>
       )}
 
-      {/* Last event banner */}
       {lastEvent && (
         <View style={[
-          styles.eventBanner,
-          {
-            backgroundColor: lastEvent.eventType === 'boarded'
-              ? (isDark ? 'rgba(22,163,74,0.12)' : '#F0FDF4')
-              : (isDark ? 'rgba(96,165,250,0.1)' : '#EFF6FF'),
-            borderColor: lastEvent.eventType === 'boarded'
-              ? (isDark ? 'rgba(22,163,74,0.25)' : '#BBF7D0')
-              : (isDark ? 'rgba(96,165,250,0.2)' : '#BFDBFE'),
-          },
+          styles.lastEventBanner,
+          { backgroundColor: lastEvent.eventType === 'boarded' ? (isDark ? '#1A3D2A' : '#E8F8EE') : (isDark ? '#1E3A5F' : '#EEF2FF') },
         ]}>
           <View style={[
-            styles.eventBannerDot,
-            { backgroundColor: lastEvent.eventType === 'boarded' ? '#16A34A' : '#3B82F6' },
-          ]} />
-          <Text style={[styles.eventBannerText, { color: colors.textSecondary }]}>
-            {lastEvent.childName}{' '}
-            <Text style={{ color: lastEvent.eventType === 'boarded' ? '#16A34A' : '#3B82F6', fontWeight: '700' as const }}>
-              {lastEvent.eventType}
-            </Text>
-            {' '}at {fmtTime(lastEvent.occurredAt)}
+            styles.lastEventIcon,
+            { backgroundColor: lastEvent.eventType === 'boarded' ? (isDark ? '#225A38' : '#D0F0DB') : (isDark ? '#2A4A6F' : '#DEE8FF') },
+          ]}>
+            {lastEvent.eventType === 'boarded' ? (
+              <LogIn size={14} color={isDark ? '#4ADE80' : '#1B7A3D'} />
+            ) : (
+              <LogOut size={14} color={colors.info} />
+            )}
+          </View>
+          <Text style={[
+            styles.lastEventText,
+            { color: lastEvent.eventType === 'boarded' ? (isDark ? '#4ADE80' : '#1B7A3D') : colors.info },
+          ]}>
+            Last: {lastEvent.childName} {lastEvent.eventType} at {formatEventTime(lastEvent.occurredAt)}
           </Text>
         </View>
       )}
 
-      {/* Action row */}
-      <View style={styles.actionRow}>
+      <View style={[styles.actionRow, { borderBottomColor: colors.borderLight }]}>
         {!isActive ? (
           <TouchableOpacity
-            style={[styles.startBtn, { backgroundColor: colors.busYellow, shadowColor: colors.busYellow }]}
+            style={[styles.startButton, { backgroundColor: colors.busYellow }]}
             onPress={startSimulation}
-            activeOpacity={0.85}
+            activeOpacity={0.8}
             testID="start-simulation-btn"
           >
-            <Text style={[styles.startBtnText, { color: '#0B3C5D' }]}>Start Simulation</Text>
+            <Text style={[styles.startButtonText, { color: colors.onPrimary }]}>Start Simulation</Text>
           </TouchableOpacity>
         ) : (
           <>
             <TouchableOpacity
               style={[
-                styles.actionChip,
-                { backgroundColor: isFollowing ? colors.info : (isDark ? '#1E293B' : '#F1F5F9') },
-                isFollowing && { shadowColor: colors.info },
+                styles.actionBtn,
+                { backgroundColor: colors.surfaceSecondary, borderColor: colors.borderLight },
+                isFollowing && { backgroundColor: colors.info, borderColor: colors.info },
               ]}
               onPress={toggleFollow}
               activeOpacity={0.8}
               testID="follow-bus-btn"
             >
-              <Navigation size={14} color={isFollowing ? '#FFF' : colors.info} fill={isFollowing ? '#FFF' : 'none'} strokeWidth={2.5} />
-              <Text style={[styles.chipText, { color: isFollowing ? '#FFF' : colors.info }]}>
+              <Navigation
+                size={16}
+                color={isFollowing ? '#FFFFFF' : colors.info}
+                fill={isFollowing ? '#FFFFFF' : 'transparent'}
+              />
+              <Text
+                style={[
+                  styles.actionBtnText,
+                  { color: colors.info },
+                  isFollowing && { color: '#FFFFFF' },
+                ]}
+              >
                 {isFollowing ? 'Following' : 'Follow'}
               </Text>
             </TouchableOpacity>
-
             <TouchableOpacity
-              style={[styles.actionChip, { backgroundColor: isDark ? '#1E293B' : '#F1F5F9' }]}
+              style={[styles.actionBtn, { backgroundColor: colors.surfaceSecondary, borderColor: colors.borderLight }]}
               onPress={onMapSettingsPress}
               activeOpacity={0.8}
               testID="map-settings-btn"
             >
-              <Layers size={14} color={colors.info} strokeWidth={2} />
-              <Text style={[styles.chipText, { color: colors.info }]}>Layers</Text>
+              <Layers size={16} color={colors.info} />
+              <Text style={[styles.actionBtnText, { color: colors.info }]}>Map</Text>
             </TouchableOpacity>
-
             <TouchableOpacity
-              style={[styles.actionChip, { backgroundColor: isDark ? '#1E293B' : '#F1F5F9' }]}
+              style={[styles.actionBtn, { backgroundColor: colors.surfaceSecondary, borderColor: colors.borderLight }]}
               onPress={onActivityPress}
               activeOpacity={0.8}
               testID="activity-btn"
             >
-              <Bell size={14} color={colors.info} strokeWidth={2} />
+              <Bell size={16} color={colors.info} />
               {unreadCount > 0 && (
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
                 </View>
               )}
-              <Text style={[styles.chipText, { color: colors.info }]}>Activity</Text>
+              <Text style={[styles.actionBtnText, { color: colors.info }]}>Activity</Text>
             </TouchableOpacity>
-
             <TouchableOpacity
-              style={[styles.actionChip, {
-                backgroundColor: isDark ? 'rgba(239,68,68,0.12)' : '#FFF1F2',
-                borderColor: isDark ? 'rgba(239,68,68,0.25)' : '#FECDD3',
-                borderWidth: 1,
-              }]}
+              style={[styles.actionBtn, { backgroundColor: isDark ? '#3D1A1A' : '#FFF0F0', borderColor: isDark ? '#5A2A2A' : '#FFD6D6' }]}
               onPress={stopSimulation}
               activeOpacity={0.8}
               testID="stop-simulation-btn"
             >
-              <Text style={[styles.chipText, { color: colors.danger }]}>Stop</Text>
+              <Text style={[styles.stopBtnText, { color: colors.danger }]}>Stop</Text>
             </TouchableOpacity>
           </>
         )}
       </View>
 
       {!isActive && (
-        <View style={[styles.idleActions, { borderTopColor: isDark ? '#1E293B' : '#F1F5F9' }]}>
+        <View style={styles.quickActions}>
           <TouchableOpacity
-            style={[styles.idleBtn, { backgroundColor: isDark ? '#0F172A' : '#F8FAFC' }]}
+            style={[styles.quickBtn, { backgroundColor: colors.surfaceSecondary }]}
+            onPress={onSettingsPress}
+            activeOpacity={0.8}
+          >
+            <Settings size={16} color={colors.info} />
+            <Text style={[styles.quickBtnText, { color: colors.info }]}>Settings</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.quickBtn, { backgroundColor: colors.surfaceSecondary }]}
             onPress={onActivityPress}
             activeOpacity={0.8}
           >
-            <Bell size={15} color={colors.info} strokeWidth={2} />
+            <Bell size={16} color={colors.info} />
             {unreadCount > 0 && (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
               </View>
             )}
-            <Text style={[styles.idleBtnText, { color: colors.info }]}>Activity</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.idleBtn, { backgroundColor: isDark ? '#0F172A' : '#F8FAFC' }]}
-            onPress={onMapSettingsPress}
-            activeOpacity={0.8}
-          >
-            <Layers size={15} color={colors.info} strokeWidth={2} />
-            <Text style={[styles.idleBtnText, { color: colors.info }]}>Map Layers</Text>
+            <Text style={[styles.quickBtnText, { color: colors.info }]}>Activity</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Scrollable detail */}
       <ScrollView
-        style={styles.scroll}
+        style={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        scrollEnabled={true}
         nestedScrollEnabled={true}
       >
         <RouteTimeline
@@ -307,7 +318,12 @@ export default function BottomSheet({ onSettingsPress, onMapSettingsPress, onAct
           currentStopIndex={busState.currentStopIndex}
           nextStopIndex={busState.nextStopIndex}
         />
-        <EventsFeed ridershipEvents={ridershipEvents} serviceAlerts={serviceAlerts} />
+
+        <EventsFeed
+          ridershipEvents={ridershipEvents}
+          serviceAlerts={serviceAlerts}
+        />
+
         <View style={{ height: 80 }} />
       </ScrollView>
     </Animated.View>
@@ -315,217 +331,177 @@ export default function BottomSheet({ onSettingsPress, onMapSettingsPress, onAct
 }
 
 const styles = StyleSheet.create({
-  sheet: {
+  container: {
     position: 'absolute',
-    left: 0, right: 0, top: 0,
+    left: 0,
+    right: 0,
+    top: 0,
     height: SCREEN_HEIGHT,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
-    elevation: 24,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 20,
     paddingHorizontal: 20,
   },
   handleArea: {
     alignItems: 'center',
-    paddingTop: 12,
-    paddingBottom: 6,
+    paddingTop: 10,
+    paddingBottom: 8,
   },
   handle: {
-    width: 32,
+    width: 36,
     height: 4,
     borderRadius: 2,
   },
-
-  // Header
-  header: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 14,
-    marginTop: 4,
+    marginBottom: 8,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
     flex: 1,
+    marginRight: 8,
   },
-  busIdBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
-  busIdText: {
-    fontSize: 15,
-    fontWeight: '800' as const,
-    letterSpacing: 0.5,
-  },
-  routeInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  routeTo: {
-    fontSize: 13,
-    fontWeight: '500' as const,
-  },
-  presenceWrap: {
-    marginTop: 1,
-  },
-  settingsBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // ETA
-  etaHero: {
-    marginBottom: 12,
-  },
-  etaMain: {
+  statusRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     gap: 6,
+  },
+  busId: {
+    fontSize: 17,
+    fontWeight: '700' as const,
+  },
+  routeArrow: {
+    fontSize: 15,
+  },
+  destination: {
+    fontSize: 15,
+    flex: 1,
+  },
+  etaRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
     marginBottom: 10,
   },
   etaNumber: {
-    fontSize: 56,
-    fontWeight: '800' as const,
-    lineHeight: 60,
+    fontSize: 32,
+    fontWeight: '700' as const,
     fontVariant: ['tabular-nums'],
-    letterSpacing: -2,
   },
-  etaRight: {
-    marginBottom: 8,
-  },
-  etaMinLabel: {
-    fontSize: 14,
+  etaUnit: {
+    fontSize: 16,
     fontWeight: '500' as const,
-    lineHeight: 19,
   },
   etaDivider: {
-    height: 1,
-    marginBottom: 10,
+    width: 1,
+    height: 18,
+    marginHorizontal: 12,
   },
-  nextStopRow: {
+  nextStopText: {
+    fontSize: 14,
+    flex: 1,
+  },
+  etaPlaceholder: {
+    fontSize: 16,
+  },
+  lastEventBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    marginBottom: 10,
   },
-  nextStopLabel: {
-    fontSize: 13,
-    fontWeight: '500' as const,
+  lastEventIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  nextStopName: {
+  lastEventText: {
     fontSize: 13,
     fontWeight: '600' as const,
     flex: 1,
   },
-  noTrackingText: {
-    fontSize: 15,
-    paddingVertical: 8,
-  },
-
-  // Event banner
-  eventBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 12,
-  },
-  eventBannerDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-  },
-  eventBannerText: {
-    fontSize: 13,
-    flex: 1,
-    lineHeight: 18,
-  },
-
-  // Actions
   actionRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
   },
-  startBtn: {
-    flex: 1,
-    paddingVertical: 15,
-    borderRadius: 16,
-    alignItems: 'center',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 6,
+  quickActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
   },
-  startBtnText: {
-    fontSize: 16,
-    fontWeight: '700' as const,
-    color: '#0A1628',
-  },
-  actionChip: {
+  quickBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 10,
+    gap: 6,
+    paddingVertical: 12,
     borderRadius: 12,
   },
-  chipText: {
-    fontSize: 12,
+  quickBtnText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  startButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  startButtonText: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  actionBtnText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+  },
+  stopBtnText: {
+    fontSize: 13,
     fontWeight: '600' as const,
   },
   badge: {
     position: 'absolute',
-    top: -3,
-    right: 6,
+    top: -4,
+    right: 8,
     backgroundColor: '#DC2626',
-    borderRadius: 7,
-    minWidth: 14,
-    height: 14,
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 3,
+    paddingHorizontal: 4,
   },
   badgeText: {
-    fontSize: 8,
+    fontSize: 9,
     fontWeight: '700' as const,
-    color: '#FFF',
+    color: '#FFFFFF',
   },
-
-  // Idle
-  idleActions: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-  },
-  idleBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 13,
-    borderRadius: 14,
-  },
-  idleBtnText: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-  },
-
-  scroll: {
+  scrollContent: {
     flex: 1,
   },
 });
