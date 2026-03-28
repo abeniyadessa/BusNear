@@ -85,10 +85,14 @@ export default function BottomSheet({ onSettingsPress, onMapSettingsPress, onAct
   const nextStop = route.stops[busState.nextStopIndex];
   const isActive = busState.isSimulating;
 
-  const statusColor = busState.status === 'arriving'  ? '#16A34A'
-                    : busState.status === 'arrived'    ? '#16A34A'
-                    : busState.status === 'delayed'     ? '#DC2626'
+  const statusColor = busState.status === 'arriving' ? '#16A34A'
+                    : busState.status === 'arrived'   ? '#16A34A'
+                    : busState.status === 'delayed'    ? '#DC2626'
                     : colors.busYellow;
+
+  const etaGlow = busState.status === 'arriving' ? '#16A34A'
+                : busState.status === 'delayed'   ? '#DC2626'
+                : colors.busYellow;
 
   return (
     <Animated.View
@@ -120,8 +124,8 @@ export default function BottomSheet({ onSettingsPress, onMapSettingsPress, onAct
       {/* Header: bus ID + route + presence */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <View style={[styles.busIdBadge, { backgroundColor: isDark ? '#0F172A' : '#F8FAFC' }]}>
-            <Text style={[styles.busIdText, { color: colors.busYellow }]}>{busState.busId}</Text>
+          <View style={[styles.busIdBadge, { backgroundColor: isDark ? 'rgba(255,196,0,0.15)' : 'rgba(255,196,0,0.12)' }]}>
+            <Text style={[styles.busIdText, { color: colors.busYellowDark }]}>{busState.busId}</Text>
           </View>
           <View style={styles.routeInfo}>
             <Text style={[styles.routeTo, { color: colors.textSecondary }]} numberOfLines={1}>
@@ -205,7 +209,7 @@ export default function BottomSheet({ onSettingsPress, onMapSettingsPress, onAct
             activeOpacity={0.85}
             testID="start-simulation-btn"
           >
-            <Text style={styles.startBtnText}>Start Simulation</Text>
+            <Text style={[styles.startBtnText, { color: '#0B3C5D' }]}>Start Simulation</Text>
           </TouchableOpacity>
         ) : (
           <>

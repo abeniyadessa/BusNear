@@ -36,15 +36,14 @@ import { SavedAddress } from '@/types';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // ── Design tokens ────────────────────────────────────────────────────────────
-const NAVY   = '#0A1628';
-const YELLOW = '#FFC400';
+const NAVY        = '#0B3C5D';
+const YELLOW      = '#FFC400';
 const YELLOW_DARK = '#E5A500';
-const WHITE  = '#FFFFFF';
-const SLATE  = '#1E293B';
-const GRAY   = '#64748B';
-const LIGHT  = '#F1F5F9';
-const SUCCESS = '#16A34A';
-const ERROR   = '#DC2626';
+const WHITE       = '#FFFFFF';
+const GRAY        = '#64748B';
+const LIGHT       = '#F1F5F9';
+const SUCCESS     = '#16A34A';
+const ERROR       = '#DC2626';
 
 type GeoResult = { label: string; coordinate: { latitude: number; longitude: number } };
 
@@ -283,21 +282,21 @@ export default function OnboardingScreen() {
 
         {/* Top wordmark */}
         <View style={[styles.wordmarkRow, { marginTop: insets.top + 20 }]}>
-          <View style={styles.wordmarkDot} />
-          <Text style={styles.wordmark}>BusNear</Text>
+          <View style={[styles.wordmarkDot, { backgroundColor: NAVY }]} />
+          <Text style={[styles.wordmark, { color: NAVY }]}>BusNear</Text>
         </View>
 
         {/* Hero */}
         <View style={styles.heroCenter}>
-          <Animated.View style={[styles.glowRing, { opacity: glowPulse }]} />
-          <Animated.View style={[styles.busCircle, { transform: [{ translateY: busFloat }] }]}>
+          <Animated.View style={[styles.glowRing, { opacity: glowPulse, backgroundColor: NAVY }]} />
+          <Animated.View style={[styles.busCircle, { backgroundColor: WHITE, transform: [{ translateY: busFloat }] }]}>
             <Bus size={52} color={NAVY} strokeWidth={2} />
           </Animated.View>
 
-          <Text style={styles.heroHeadline}>
+          <Text style={[styles.heroHeadline, { color: NAVY }]}>
             Know exactly{'\n'}where your bus is.
           </Text>
-          <Text style={styles.heroSub}>
+          <Text style={[styles.heroSub, { color: NAVY, opacity: 0.65 }]}>
             Real-time tracking for every parent.{'\n'}School bus, simplified.
           </Text>
         </View>
@@ -306,13 +305,13 @@ export default function OnboardingScreen() {
         <View style={styles.welcomeBtns}>
           <Animated.View style={{ transform: [{ scale: btnScale }], width: '100%' }}>
             <TouchableOpacity
-              style={styles.primaryYellowBtn}
+              style={styles.navyBtn}
               onPress={() => pressBtn(() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setStep('privacy'); })}
               activeOpacity={1}
               testID="get-started-btn"
             >
-              <Text style={styles.primaryYellowBtnText}>Get Started</Text>
-              <ArrowRight size={18} color={NAVY} strokeWidth={2.5} />
+              <Text style={styles.navyBtnText}>Get Started</Text>
+              <ArrowRight size={18} color={WHITE} strokeWidth={2.5} />
             </TouchableOpacity>
           </Animated.View>
 
@@ -321,7 +320,7 @@ export default function OnboardingScreen() {
             onPress={() => { setChildCode('CH-9F3K-2Q7M-8D1P'); setStep('enter_id'); }}
             activeOpacity={0.7}
           >
-            <Text style={styles.ghostBtnText}>I have a demo code</Text>
+            <Text style={[styles.ghostBtnText, { color: NAVY, opacity: 0.55 }]}>I have a demo code</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -689,7 +688,7 @@ export default function OnboardingScreen() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle={authState.step === 'welcome' ? 'light-content' : 'dark-content'} />
+      <StatusBar barStyle="dark-content" />
       <Stack.Screen options={{ headerShown: false }} />
       <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         {renderStep()}
@@ -705,7 +704,7 @@ const styles = StyleSheet.create({
   // ── Welcome ────────────────────────────────────────────────────────────────
   welcomeBg: {
     flex: 1,
-    backgroundColor: NAVY,
+    backgroundColor: YELLOW,
     paddingHorizontal: 28,
     justifyContent: 'space-between',
   },
@@ -737,34 +736,30 @@ const styles = StyleSheet.create({
     width: 200,
     height: 200,
     borderRadius: 100,
-    backgroundColor: YELLOW,
-    opacity: 0.07,
+    opacity: 0.06,
   },
   busCircle: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: YELLOW,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 40,
-    shadowColor: YELLOW,
+    shadowColor: NAVY,
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 24,
-    elevation: 12,
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
   },
   heroHeadline: {
     fontSize: 34,
     fontWeight: '800' as const,
-    color: WHITE,
     textAlign: 'center',
     lineHeight: 42,
     letterSpacing: -0.5,
   },
   heroSub: {
     fontSize: 16,
-    color: 'rgba(255,255,255,0.55)',
     textAlign: 'center',
     lineHeight: 24,
     marginTop: 14,
@@ -773,6 +768,27 @@ const styles = StyleSheet.create({
     gap: 12,
     width: '100%',
   },
+  navyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: NAVY,
+    paddingVertical: 17,
+    borderRadius: 16,
+    width: '100%',
+    shadowColor: NAVY,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  navyBtnText: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    color: WHITE,
+    letterSpacing: 0.2,
+  },
   ghostBtn: {
     paddingVertical: 16,
     alignItems: 'center',
@@ -780,7 +796,6 @@ const styles = StyleSheet.create({
   ghostBtnText: {
     fontSize: 15,
     fontWeight: '600' as const,
-    color: 'rgba(255,255,255,0.45)',
   },
 
   // ── Progress dots ──────────────────────────────────────────────────────────
