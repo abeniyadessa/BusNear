@@ -1,14 +1,16 @@
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Animated } from 'react-native';
+import { View, StyleSheet, Animated, Easing } from 'react-native';
 import Svg, {
   Rect,
   Path,
   Circle,
-  G,
+  Ellipse,
   Defs,
   LinearGradient,
+  RadialGradient,
   Stop,
-  Ellipse,
+  G,
+  ClipPath,
 } from 'react-native-svg';
 import { BusStatus } from '@/types';
 
@@ -17,181 +19,355 @@ interface BusMarkerProps {
   status: BusStatus;
 }
 
-// ── Palette ──────────────────────────────────────────────────────────────────
-const Y1 = '#FFD233'; // roof highlight
-const Y2 = '#FFC400'; // body face
-const Y3 = '#D4991A'; // right depth side
-const Y4 = '#B07A0D'; // bottom depth side
-const NAVY = '#0B3C5D';
-const WIN = '#1E3A5F';
-const WIN_SHINE = 'rgba(255,255,255,0.25)';
-const WHITE = '#FFFFFF';
-const WHEEL = '#1A1A2E';
-const WHEEL_RIM = '#4A5568';
+const CANVAS = 56;
+const BUS_W  = 26;
+const BUS_H  = 46;
+const BUS_X  = (CANVAS - BUS_W) / 2;   // 15
+const BUS_Y  = (CANVAS - BUS_H) / 2;   // 5
 
-// ── The 3-D bus SVG (64×64 canvas, bus facing "up" = direction of travel) ────
-function Bus3D({ color = Y2 }: { color?: string }) {
+function BusSVG({ status }: { status: BusStatus }) {
+  const isDelayed  = status === 'delayed';
+  const isArriving = status === 'arriving' || status === 'arrived';
+
+  const bodyColor  = isDelayed ? '#FF6B35' : '#FFC400';
+  const bodyDark   = isDelayed ? '#D4521A' : '#E5A500';
+  const bodyLight  = isDelayed ? '#FF9966' : '#FFD84D';
+  const glowColor  = isArriving ? '#22C55E' : isDelayed ? '#FF6B35' : '#FFC400';
+
   return (
-    <Svg width={64} height={64} viewBox="0 0 64 64">
+    <Svg width={CANVAS} height={CANVAS} viewBox={`0 0 ${CANVAS} ${CANVAS}`}>
       <Defs>
-        {/* Body face gradient */}
-        <LinearGradient id="bodyGrad" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={Y1} stopOpacity="1" />
-          <Stop offset="1" stopColor={color} stopOpacity="1" />
+        {/* Main body gradient — light center, darker edges (roundness illusion) */}
+        <RadialGradient id="bodyR" cx="50%" cy="38%" rx="55%" ry="50%">
+          <Stop offset="0%"   stopColor={bodyLight} stopOpacity="1" />
+          <Stop offset="60%"  stopColor={bodyColor}  stopOpacity="1" />
+          <Stop offset="100%" stopColor={bodyDark}   stopOpacity="1" />
+        </RadialGradient>
+
+        {/* Windshield glass */}
+        <LinearGradient id="windGrad" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0%"   stopColor="#1E3A5F" stopOpacity="0.95" />
+          <Stop offset="100%" stopColor="#0B2440" stopOpacity="1"    />
         </LinearGradient>
-        {/* Roof gradient */}
-        <LinearGradient id="roofGrad" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0" stopColor={Y1} stopOpacity="1" />
-          <Stop offset="1" stopColor={Y2} stopOpacity="1" />
+
+        {/* Window glass */}
+        <LinearGradient id="winGrad" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0%"   stopColor="#2D5A8E" stopOpacity="0.9" />
+          <Stop offset="100%" stopColor="#1A3A60" stopOpacity="1"   />
         </LinearGradient>
+
+        {/* Ground shadow */}
+        <RadialGradient id="shadowR" cx="50%" cy="50%" rx="50%" ry="50%">
+          <Stop offset="0%"   stopColor="#000000" stopOpacity="0.28" />
+          <Stop offset="100%" stopColor="#000000" stopOpacity="0"    />
+        </RadialGradient>
+
+        {/* Glow for arriving/status */}
+        <RadialGradient id="glowR" cx="50%" cy="50%" rx="50%" ry="50%">
+          <Stop offset="0%"   stopColor={glowColor} stopOpacity="0.35" />
+          <Stop offset="100%" stopColor={glowColor} stopOpacity="0"    />
+        </RadialGradient>
+
+        {/* Body clip — rounded rect shape */}
+        <ClipPath id="busClip">
+          <Rect
+            x={BUS_X} y={BUS_Y}
+            width={BUS_W} height={BUS_H}
+            rx={6} ry={6}
+          />
+        </ClipPath>
       </Defs>
 
       {/* ── Ground shadow ── */}
-      <Ellipse cx="33" cy="56" rx="18" ry="4" fill="rgba(0,0,0,0.18)" />
-
-      {/* ── Right-side depth panel (gives the bus thickness) ── */}
-      {/* Bottom face */}
-      <Path
-        d="M16 44 L48 44 L52 48 L12 48 Z"
-        fill={Y4}
-      />
-      {/* Right face */}
-      <Path
-        d="M48 20 L52 16 L52 48 L48 44 Z"
-        fill={Y3}
+      <Ellipse
+        cx={CANVAS / 2 + 2}
+        cy={BUS_Y + BUS_H - 2}
+        rx={BUS_W / 2 + 2}
+        ry={5}
+        fill="url(#shadowR)"
       />
 
-      {/* ── Main bus body face ── */}
+      {/* ── Status glow ring ── */}
+      {(isArriving || isDelayed) && (
+        <Ellipse
+          cx={CANVAS / 2}
+          cy={CANVAS / 2}
+          rx={BUS_W / 2 + 8}
+          ry={BUS_H / 2 + 8}
+          fill="url(#glowR)"
+        />
+      )}
+
+      {/* ── White outline / border (contrast against map) ── */}
       <Rect
-        x="16" y="20"
-        width="32" height="24"
-        rx="2"
-        fill="url(#bodyGrad)"
+        x={BUS_X - 1.5} y={BUS_Y - 1.5}
+        width={BUS_W + 3} height={BUS_H + 3}
+        rx={7} ry={7}
+        fill="white"
+        opacity={0.92}
       />
 
-      {/* ── Roof (top face, isometric parallelogram) ── */}
-      <Path
-        d="M16 20 L20 14 L52 14 L48 20 Z"
-        fill="url(#roofGrad)"
-      />
-      {/* Roof right edge */}
-      <Path
-        d="M48 20 L52 14 L52 16 L48 22 Z"
-        fill={Y3}
-      />
-
-      {/* ── Front bumper (bottom of body face) ── */}
+      {/* ── Bus body ── */}
       <Rect
-        x="16" y="40"
-        width="32" height="4"
-        rx="1"
-        fill={NAVY}
-        opacity={0.7}
+        x={BUS_X} y={BUS_Y}
+        width={BUS_W} height={BUS_H}
+        rx={6} ry={6}
+        fill="url(#bodyR)"
       />
 
-      {/* ── Windows (3 side windows) ── */}
-      <Rect x="19" y="23" width="7" height="7" rx="1" fill={WIN} />
-      <Rect x="29" y="23" width="7" height="7" rx="1" fill={WIN} />
-      <Rect x="39" y="23" width="7" height="7" rx="1" fill={WIN} />
+      {/* ── Black safety stripe (school bus style) ── */}
+      <Rect
+        x={BUS_X} y={BUS_Y + 14}
+        width={BUS_W} height={2.5}
+        fill="#0B1929"
+        opacity={0.35}
+      />
+      <Rect
+        x={BUS_X} y={BUS_Y + BUS_H - 14}
+        width={BUS_W} height={2.5}
+        fill="#0B1929"
+        opacity={0.35}
+      />
 
-      {/* Window shine */}
-      <Rect x="19" y="23" width="3" height="2" rx="0.5" fill={WIN_SHINE} />
-      <Rect x="29" y="23" width="3" height="2" rx="0.5" fill={WIN_SHINE} />
-      <Rect x="39" y="23" width="3" height="2" rx="0.5" fill={WIN_SHINE} />
+      {/* ── Windshield (front, top) ── */}
+      <Path
+        d={`
+          M${BUS_X + 4} ${BUS_Y + 3}
+          L${BUS_X + BUS_W - 4} ${BUS_Y + 3}
+          L${BUS_X + BUS_W - 2} ${BUS_Y + 10}
+          L${BUS_X + 2} ${BUS_Y + 10}
+          Z
+        `}
+        fill="url(#windGrad)"
+        clipPath="url(#busClip)"
+      />
 
-      {/* ── Windshield / front face ── */}
-      <Rect x="16" y="32" width="12" height="7" rx="1" fill={WIN} opacity={0.9} />
-      <Rect x="16" y="32" width="5" height="2" rx="0.5" fill={WIN_SHINE} />
+      {/* Windshield shine */}
+      <Path
+        d={`
+          M${BUS_X + 5} ${BUS_Y + 4}
+          L${BUS_X + 13} ${BUS_Y + 4}
+          L${BUS_X + 12} ${BUS_Y + 9}
+          L${BUS_X + 4.5} ${BUS_Y + 9}
+          Z
+        `}
+        fill="white"
+        opacity={0.12}
+        clipPath="url(#busClip)"
+      />
 
-      {/* ── "SCHOOL BUS" stripe ── */}
-      <Rect x="16" y="31" width="32" height="1.5" fill={NAVY} opacity={0.25} />
+      {/* ── Side windows (left column) ── */}
+      {[13, 20, 27].map((yOff, i) => (
+        <Rect
+          key={`wl${i}`}
+          x={BUS_X + 1.5}
+          y={BUS_Y + yOff}
+          width={8}
+          height={5.5}
+          rx={1.2}
+          fill="url(#winGrad)"
+          clipPath="url(#busClip)"
+        />
+      ))}
 
-      {/* ── Wheels ── */}
-      {/* Front-left */}
-      <Circle cx="20" cy="44" r="4.5" fill={WHEEL} />
-      <Circle cx="20" cy="44" r="2.2" fill={WHEEL_RIM} />
-      <Circle cx="20" cy="44" r="1" fill={WHEEL} />
-      {/* Front-right */}
-      <Circle cx="44" cy="44" r="4.5" fill={WHEEL} />
-      <Circle cx="44" cy="44" r="2.2" fill={WHEEL_RIM} />
-      <Circle cx="44" cy="44" r="1" fill={WHEEL} />
+      {/* ── Side windows (right column) ── */}
+      {[13, 20, 27].map((yOff, i) => (
+        <Rect
+          key={`wr${i}`}
+          x={BUS_X + BUS_W - 9.5}
+          y={BUS_Y + yOff}
+          width={8}
+          height={5.5}
+          rx={1.2}
+          fill="url(#winGrad)"
+          clipPath="url(#busClip)"
+        />
+      ))}
 
-      {/* Right-side wheels (3D offset) */}
-      <Circle cx="48" cy="46" r="3.5" fill={WHEEL} opacity={0.7} />
-      <Circle cx="48" cy="46" r="1.6" fill={WHEEL_RIM} opacity={0.7} />
+      {/* Window shine highlights */}
+      {[13, 20, 27].map((yOff, i) => (
+        <Rect
+          key={`wsl${i}`}
+          x={BUS_X + 2}
+          y={BUS_Y + yOff + 0.5}
+          width={3}
+          height={1.5}
+          rx={0.5}
+          fill="white"
+          opacity={0.3}
+          clipPath="url(#busClip)"
+        />
+      ))}
+      {[13, 20, 27].map((yOff, i) => (
+        <Rect
+          key={`wsr${i}`}
+          x={BUS_X + BUS_W - 9}
+          y={BUS_Y + yOff + 0.5}
+          width={3}
+          height={1.5}
+          rx={0.5}
+          fill="white"
+          opacity={0.3}
+          clipPath="url(#busClip)"
+        />
+      ))}
+
+      {/* ── Rear window ── */}
+      <Path
+        d={`
+          M${BUS_X + 3} ${BUS_Y + BUS_H - 10}
+          L${BUS_X + BUS_W - 3} ${BUS_Y + BUS_H - 10}
+          L${BUS_X + BUS_W - 2} ${BUS_Y + BUS_H - 3}
+          L${BUS_X + 2} ${BUS_Y + BUS_H - 3}
+          Z
+        `}
+        fill="url(#winGrad)"
+        clipPath="url(#busClip)"
+      />
+      {/* Rear window shine */}
+      <Rect
+        x={BUS_X + 4}
+        y={BUS_Y + BUS_H - 9}
+        width={5}
+        height={1.5}
+        rx={0.5}
+        fill="white"
+        opacity={0.2}
+        clipPath="url(#busClip)"
+      />
 
       {/* ── Headlights ── */}
-      <Rect x="17" y="43" width="4" height="2" rx="1" fill="#FFE566" opacity={0.9} />
-      <Rect x="43" y="43" width="4" height="2" rx="1" fill="#FFE566" opacity={0.9} />
+      <Rect
+        x={BUS_X + 2} y={BUS_Y + 1}
+        width={5} height={2.5}
+        rx={1.2}
+        fill="#FFF9C4"
+        opacity={0.95}
+      />
+      <Rect
+        x={BUS_X + BUS_W - 7} y={BUS_Y + 1}
+        width={5} height={2.5}
+        rx={1.2}
+        fill="#FFF9C4"
+        opacity={0.95}
+      />
 
-      {/* ── Direction chevron (points up = forward) ── */}
-      <Path
-        d="M28 11 L32 6 L36 11 L32 9 Z"
-        fill={NAVY}
+      {/* ── Tail lights ── */}
+      <Rect
+        x={BUS_X + 2} y={BUS_Y + BUS_H - 3}
+        width={4} height={2}
+        rx={1}
+        fill="#FF3B30"
         opacity={0.85}
+      />
+      <Rect
+        x={BUS_X + BUS_W - 6} y={BUS_Y + BUS_H - 3}
+        width={4} height={2}
+        rx={1}
+        fill="#FF3B30"
+        opacity={0.85}
+      />
+
+      {/* ── Wheel arches (subtle bumps on sides) ── */}
+      {/* Front-left */}
+      <Ellipse cx={BUS_X - 0.5} cy={BUS_Y + 10} rx={2.5} ry={3.5} fill="#1A1A2E" opacity={0.55} />
+      {/* Rear-left */}
+      <Ellipse cx={BUS_X - 0.5} cy={BUS_Y + BUS_H - 10} rx={2.5} ry={3.5} fill="#1A1A2E" opacity={0.55} />
+      {/* Front-right */}
+      <Ellipse cx={BUS_X + BUS_W + 0.5} cy={BUS_Y + 10} rx={2.5} ry={3.5} fill="#1A1A2E" opacity={0.55} />
+      {/* Rear-right */}
+      <Ellipse cx={BUS_X + BUS_W + 0.5} cy={BUS_Y + BUS_H - 10} rx={2.5} ry={3.5} fill="#1A1A2E" opacity={0.55} />
+
+      {/* ── Body surface sheen (simulates light from top-left) ── */}
+      <Rect
+        x={BUS_X} y={BUS_Y}
+        width={BUS_W / 2} height={BUS_H}
+        rx={6} ry={6}
+        fill="white"
+        opacity={0.05}
+        clipPath="url(#busClip)"
+      />
+
+      {/* ── Direction indicator chevron ── */}
+      <Path
+        d={`M${CANVAS / 2} ${BUS_Y - 6} L${CANVAS / 2 - 4} ${BUS_Y - 1} L${CANVAS / 2 + 4} ${BUS_Y - 1} Z`}
+        fill="#0B3C5D"
+        opacity={0.8}
       />
     </Svg>
   );
 }
 
-// ── Marker wrapper with pulse + heading rotation ──────────────────────────────
 export default function BusMarker({ heading, status }: BusMarkerProps) {
-  const pulseAnim    = useRef(new Animated.Value(1)).current;
+  const pulseScale   = useRef(new Animated.Value(1)).current;
   const pulseOpacity = useRef(new Animated.Value(0)).current;
+  const breatheScale = useRef(new Animated.Value(1)).current;
   const isArriving   = status === 'arriving';
 
+  // Idle breathe — subtle scale pulse like Uber
+  useEffect(() => {
+    const breathe = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breatheScale, { toValue: 1.04, duration: 1600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(breatheScale, { toValue: 1,    duration: 1600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    );
+    breathe.start();
+    return () => breathe.stop();
+  }, []);
+
+  // Arrival pulse ring
   useEffect(() => {
     if (isArriving) {
-      const anim = Animated.loop(
+      const pulse = Animated.loop(
         Animated.sequence([
           Animated.parallel([
-            Animated.timing(pulseAnim,    { toValue: 2.4, duration: 1000, useNativeDriver: true }),
-            Animated.timing(pulseOpacity, { toValue: 0,   duration: 1000, useNativeDriver: true }),
+            Animated.timing(pulseScale,   { toValue: 2.2, duration: 900, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+            Animated.timing(pulseOpacity, { toValue: 0,   duration: 900, useNativeDriver: true }),
           ]),
           Animated.parallel([
-            Animated.timing(pulseAnim,    { toValue: 1,   duration: 0,    useNativeDriver: true }),
-            Animated.timing(pulseOpacity, { toValue: 0.5, duration: 0,    useNativeDriver: true }),
+            Animated.timing(pulseScale,   { toValue: 1, duration: 0, useNativeDriver: true }),
+            Animated.timing(pulseOpacity, { toValue: 0.55, duration: 0, useNativeDriver: true }),
           ]),
         ])
       );
-      anim.start();
-      return () => anim.stop();
+      pulse.start();
+      return () => pulse.stop();
     } else {
-      pulseAnim.setValue(1);
+      pulseScale.setValue(1);
       pulseOpacity.setValue(0);
     }
   }, [isArriving]);
 
-  const busColor = status === 'delayed' ? '#FF6B35' : Y2;
-
   return (
     <View style={[styles.container, { transform: [{ rotate: `${heading}deg` }] }]}>
-      {/* Pulse ring when arriving */}
-      {isArriving && (
-        <Animated.View
-          style={[
-            styles.pulseRing,
-            { transform: [{ scale: pulseAnim }], opacity: pulseOpacity },
-          ]}
-        />
-      )}
-      <Bus3D color={busColor} />
+      {/* Arrival pulse ring */}
+      <Animated.View
+        style={[
+          styles.pulseRing,
+          { transform: [{ scale: pulseScale }], opacity: pulseOpacity },
+        ]}
+      />
+      {/* Subtle idle breathe */}
+      <Animated.View style={{ transform: [{ scale: breatheScale }] }}>
+        <BusSVG status={status} />
+      </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    width: 64,
-    height: 64,
+    width: CANVAS,
+    height: CANVAS,
     alignItems: 'center',
     justifyContent: 'center',
   },
   pulseRing: {
     position: 'absolute',
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Y2,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#22C55E',
   },
 });
