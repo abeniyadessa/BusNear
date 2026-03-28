@@ -177,6 +177,8 @@ export const [BusTrackingProvider, useBusTracking] = createContextHook(() => {
           filter: `bus_id=eq.${activeBusId}`,
         },
         (payload) => {
+          // If we're running the simulation locally, we own the state — ignore remote updates
+          if (isSimulatingRef.current) return;
           const d = payload.new as any;
           if (!d.is_active) return;
           const updatedAt = new Date(d.updated_at).getTime();
